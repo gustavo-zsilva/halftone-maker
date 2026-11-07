@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Halftone DTF</title>
+  <meta name="description" content="Transforme artes em bolinhas coloridas com fundo transparente, prontas para impressão DTF.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%23141210' width='32' height='32'/%3E%3Ccircle fill='%23e4572e' cx='10' cy='18' r='4'/%3E%3Ccircle fill='%23f0c36a' cx='20' cy='13' r='6'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 64 32" aria-hidden="true">
+        <circle cx="6" cy="20" r="3" fill="#e4572e"/>
+        <circle cx="18" cy="16" r="5" fill="#f0c36a"/>
+        <circle cx="32" cy="14" r="7" fill="#e4572e"/>
+        <circle cx="46" cy="16" r="5" fill="#7ec8c3"/>
+        <circle cx="58" cy="20" r="3" fill="#1f7a8c"/>
+      </svg>
+      <div>
+        <p class="eyebrow">Impressão DTF</p>
+        <h1>Halftone</h1>
+      </div>
+    </div>
+    <p class="lede">Bolinhas coloridas, fundo transparente e 300 DPI no tamanho da prensa.</p>
+  </header>
+
+  <main>
+    <section class="panel" aria-label="Ajustes">
+      <div class="panel-scroll">
+      <label class="drop" id="drop">
+        <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml">
+        <span class="drop-title" id="dropTitle">Soltar a arte</span>
+        <span class="drop-meta" id="dropMeta">PNG, JPG ou WebP. O fundo branco de um JPEG pode ser removido.</span>
+      </label>
+      <div class="row">
+        <button class="text-button" id="demo" type="button">Usar um exemplo</button>
+      </div>
+
+      <div class="presets" role="group" aria-label="Predefinições">
+        <button type="button" data-preset="open" title="Bolinhas grandes, visual gráfico">Aberto</button>
+        <button type="button" data-preset="dtf" class="is-active" title="Ponto de partida para transfer">DTF</button>
+        <button type="button" data-preset="fine" title="Mais detalhe, menos folga para o pó">Fino</button>
+      </div>
+
+      <div class="field">
+        <div class="field-top">
+          <label for="dot">Tamanho das bolinhas</label>
+          <output id="dotOut" for="dot">0,85 mm</output>
+        </div>
+        <input id="dot" type="range" min="0.55" max="2" step="0.01" value="0.85">
+        <p class="hint">Diâmetro no ponto mais cheio da arte. Entre 0,7 e 1,2 mm costuma transferir bem.</p>
+      </div>
+
+      <div class="field">
+        <div class="field-top">
+          <label for="width">Largura de impressão</label>
+          <output id="widthOut" for="width">28 cm</output>
+        </div>
+        <div class="width-line">
+          <input id="width" type="number" lang="pt-BR" min="5" max="40" step="0.1" value="28" inputmode="decimal">
+          <span>cm</span>
+        </div>
+        <p class="hint" id="sizeHint">A altura acompanha a proporção da arte. A saída fica em 300 DPI.</p>
+      </div>
+
+      <div class="field">
+        <div class="field-top">
+          <label for="gap">Espaço entre bolinhas</label>
+          <output id="gapOut" for="gap">8%</output>
+        </div>
+        <input id="gap" type="range" min="0" max="35" step="1" value="8">
+        <p class="hint">Mesmo no tom mais fechado sobra um vão. O tecido respira e o pó tem onde ancorar.</p>
+      </div>
+
+      <div class="field">
+        <div class="field-top">
+          <label for="min">Tamanho mínimo</label>
+          <output id="minOut" for="min">0,50 mm</output>
+        </div>
+        <input id="min" type="range" min="0.4" max="1.2" step="0.05" value="0.5">
+        <p class="hint">Bolinhas menores que isso saem do arquivo. Abaixo de 0,5 mm o pó costuma não segurar.</p>
+      </div>
+
+      <div class="field">
+        <div class="field-top">
+          <label for="tone">Abertura dos claros</label>
+          <output id="toneOut" for="tone">50%</output>
+        </div>
+        <input id="tone" type="range" min="0" max="100" step="1" value="50">
+        <p class="hint">0% mantém o mesmo tamanho em toda a cor. 100% encolhe as bolinhas nos tons claros, como numa foto.</p>
+      </div>
+
+      <div class="field">
+        <div class="field-top">
+          <label for="impact">Impacto</label>
+          <output id="impactOut" for="impact">40%</output>
+        </div>
+        <input id="impact" type="range" min="0" max="100" step="1" value="40">
+        <p class="hint">Deixa os tons escuros mais cheios e os claros mais abertos. O vão entre as bolinhas continua, então a leveza do halftone fica.</p>
+      </div>
+
+      <div class="field">
+        <div class="seg">
+          <button type="button" id="gray" aria-pressed="false">Preto e branco</button>
+        </div>
+        <p class="hint">As bolinhas passam a ser cinza, no tom de cada parte da arte.</p>
+      </div>
+
+      <div class="field">
+        <div class="seg">
+          <button type="button" id="outline" aria-pressed="false">Contorno sólido</button>
+        </div>
+        <p class="hint">A borda de fora da arte vira tinta contínua, na cor dela. Por dentro continuam as bolinhas.</p>
+        <div class="field" id="outlineField" hidden>
+          <div class="field-top">
+            <label for="outlineMm">Espessura do contorno</label>
+            <output id="outlineOut" for="outlineMm">1,20 mm</output>
+          </div>
+          <input id="outlineMm" type="range" min="0.4" max="4" step="0.1" value="1.2">
+          <p class="hint">Só a silhueta externa engrossa. Um contorno grosso come as partes finas da arte.</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="field-top">
+          <label for="angle">Ângulo</label>
+          <output id="angleOut" for="angle">22,5°</output>
+        </div>
+        <input id="angle" type="range" min="0" max="90" step="0.5" value="22.5">
+        <p class="hint">22,5° deixa o padrão diagonal e evita cara de grade.</p>
+      </div>
+
+      <div class="field">
+        <div class="field-top">
+          <span id="knockLabel">Fundo a remover</span>
+        </div>
+        <div class="seg" role="radiogroup" aria-labelledby="knockLabel">
+          <button type="button" data-knock="none" aria-pressed="true">Nenhum</button>
+          <button type="button" data-knock="white" aria-pressed="false">Branco</button>
+          <button type="button" data-knock="black" aria-pressed="false">Preto</button>
+        </div>
+        <p class="hint" id="knockHint">Com Nenhum, a transparência da arte é respeitada. Branco e preto também removem essa cor dentro do desenho.</p>
+      </div>
+
+      <div class="field" id="tolField" hidden>
+        <div class="field-top">
+          <label for="tolerance">Tolerância do fundo</label>
+          <output id="tolOut" for="tolerance">28</output>
+        </div>
+        <input id="tolerance" type="range" min="0" max="80" step="1" value="28">
+      </div>
+
+      <div id="notices"></div>
+
+      <details class="advanced">
+        <summary>Ajustes finos</summary>
+        <div class="field">
+          <div class="field-top">
+            <label for="contrast">Contraste do tom</label>
+            <output id="contrastOut" for="contrast">1,05</output>
+          </div>
+          <input id="contrast" type="range" min="0.5" max="2" step="0.05" value="1.05">
+          <p class="hint">Acima de 1, os meios-tons encolhem mais rápido.</p>
+        </div>
+        <div class="field">
+          <div class="field-top">
+            <label for="opacity">Corte de opacidade</label>
+            <output id="opacityOut" for="opacity">50%</output>
+          </div>
+          <input id="opacity" type="range" min="0" max="90" step="1" value="50">
+          <p class="hint">Pixels mais fracos que isso não viram tinta. No DTF, qualquer pixel com tinta ganha branco por baixo.</p>
+        </div>
+        <div class="field">
+          <div class="field-top">
+            <span id="chokeLabel">Encolhimento da base branca</span>
+            <output id="chokeOut">1 px</output>
+          </div>
+          <div class="seg" role="radiogroup" aria-labelledby="chokeLabel">
+            <button type="button" data-choke="0" aria-pressed="false">0 px</button>
+            <button type="button" data-choke="1" aria-pressed="true">1 px</button>
+            <button type="button" data-choke="2" aria-pressed="false">2 px</button>
+          </div>
+        </div>
+      </details>
+
+      <section class="guide" aria-label="Recomendações para DTF">
+        <h2>O arquivo já sai no padrão DTF</h2>
+        <ul>
+          <li>PNG em RGB, 300 DPI, no tamanho em centímetros escolhido.</li>
+          <li>Só as bolinhas ficam na arte. O fundo sai transparente, sem véu semitransparente.</li>
+          <li>Bolinhas redondas e opacas, com piso de 0,5 mm para o pó adesivo segurar.</li>
+          <li>Frequência inicial perto de 28 LPI e ângulo de 22,5°.</li>
+          <li>A base branca opcional fica um pouco menor que a cor, para não aparecer na borda.</li>
+          <li>O SVG e o PDF são vetores no tamanho da prensa, para abrir no Inkscape.</li>
+        </ul>
+      </section>
+      </div>
+      <div class="actions">
+        <button class="primary" id="download" type="button" disabled>Baixar PNG transparente</button>
+        <button class="ghost" id="downloadSvg" type="button" disabled>Baixar SVG para o Inkscape</button>
+        <div class="action-row">
+          <button class="ghost" id="downloadPdf" type="button" disabled>Baixar PDF</button>
+          <button class="ghost" id="downloadWhite" type="button" disabled>Base branca PNG</button>
+        </div>
+        <p class="hint">O SVG abre no Inkscape no tamanho em milímetros. A cor e a base branca ficam em camadas separadas. O contorno sólido, quando ligado, entra nas duas. O PDF leva as mesmas formas em vetor.</p>
+      </div>
+    </section>
+
+    <section class="preview" aria-label="Prévia">
+      <div class="toolbar">
+        <div class="seg" role="radiogroup" aria-label="O que mostrar">
+          <button type="button" id="viewResult" data-view="result" aria-pressed="true" disabled>Halftone</button>
+          <button type="button" id="viewOriginal" data-view="original" aria-pressed="false" disabled>Original</button>
+          <button type="button" id="viewWhite" data-view="white" aria-pressed="false" disabled>Base branca</button>
+        </div>
+        <div class="seg" role="radiogroup" aria-label="Fundo da prévia">
+          <button type="button" data-bg="checker" aria-pressed="true">Xadrez</button>
+          <button type="button" data-bg="#f7f4ee" aria-pressed="false">Clara</button>
+          <button type="button" data-bg="#161616" aria-pressed="false">Escura</button>
+          <label class="color-chip">
+            <input id="shirt" type="color" value="#1d4e89" aria-label="Cor da camiseta">
+            <span>Cor</span>
+          </label>
+        </div>
+        <div class="zoom">
+          <button type="button" id="zoomOut" aria-label="Diminuir">−</button>
+          <button type="button" id="zoomFit">Caber</button>
+          <button type="button" id="zoomOne" title="Um pixel da impressão para um pixel da tela. Ctrl + scroll também altera o zoom.">1:1</button>
+          <button type="button" id="zoomIn" aria-label="Aumentar">+</button>
+        </div>
+      </div>
+      <p class="spec" id="spec">Carregue uma arte para ver o tamanho de impressão.</p>
+      <p class="progress" id="progress" hidden>
+        <span id="progressLabel">Montando as bolinhas…</span>
+        <span class="progress-track"><span id="progressBar"></span></span>
+      </p>
+      <div class="viewport" id="viewport" title="Ctrl + scroll aproxima ou afasta a prévia">
+        <div class="empty" id="empty">
+          <div>
+            <p>A prévia aparece aqui.</p>
+            <p>O xadrez é transparência: isso não imprime.</p>
+          </div>
+        </div>
+        <div class="sheet is-checker" id="sheet" hidden>
+          <canvas id="view"></canvas>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/halftone.js"></script>
+  <script src="js/export-vector.js"></script>
+  <script src="js/png-dpi.js"></script>
+  <script src="js/main.js"></script>
+  <noscript>Este site precisa de JavaScript para gerar o halftone no seu navegador. A arte não sai do computador.</noscript>
+</body>
+</html>
