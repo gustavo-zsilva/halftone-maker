@@ -190,7 +190,23 @@ main {
 .presets,
 .seg {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.knock-color {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.knock-color input[type="color"] {
+  width: 36px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid #4e4840;
+  background: transparent;
 }
 
 .presets {

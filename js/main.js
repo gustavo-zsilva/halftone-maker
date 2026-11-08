@@ -6,6 +6,7 @@
     open: { dot: 1.35, gap: 15, min: 0.6, tone: 35, impact: 0, angle: 22.5, contrast: 1, choke: 1 },
     dtf: { dot: 0.85, gap: 8, min: 0.5, tone: 50, impact: 40, angle: 22.5, contrast: 1.05, choke: 1 },
     fine: { dot: 0.7, gap: 6, min: 0.5, tone: 70, impact: 25, angle: 22.5, contrast: 1.1, choke: 1 },
+    mesh: { dot: 0.67, gap: 8, min: 0.5, tone: 50, impact: 20, angle: 22.5, contrast: 1, choke: 1, shape: 'ellipse', levels: true },
   }
 
   var $ = function (id) { return document.getElementById(id) }
@@ -31,6 +32,7 @@
   var progressBar = $('progressBar')
   var knockHint = $('knockHint')
   var tolField = $('tolField')
+  var knockColorField = $('knockColorField')
 
   var state = {
     job: 0,
@@ -45,10 +47,17 @@
     heightCm: 28,
     view: 'result',
     zoom: 'fit',
+    mode: 'halftone',
+    texture: 'circles',
     knockout: 'none',
     knockoutTouched: false,
     grayscale: false,
+    shape: 'round',
+    levels: false,
+    invert: false,
+    mesh: '',
     outline: false,
+    smart: false,
     choke: 1,
     settingNotes: [],
     resultNotes: [],
@@ -87,8 +96,23 @@
       alphaCutoff: Math.round((num('opacity') / 100) * 255),
       choke: state.choke,
       impact: num('impact') / 100,
+      shape: state.shape,
+      levels: state.levels,
+      invert: state.invert,
       outlineMm: state.outline ? num('outlineMm') : 0,
+      holeMm: num('hole'),
+      holeOpen: num('light') / 100,
+      texture: state.texture,
+      knockColor: hexToRgb($('knockColor').value),
+      smart: state.smart,
+      mesh: state.mesh,
     }
+  }
+
+  function hexToRgb(hex) {
+    var value = parseInt(String(hex).slice(1), 16)
+    if (!Number.isFinite(value)) return [29, 78, 137]
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255]
   }
 
   function outputSize(bitmap, widthCm) {
@@ -119,7 +143,9 @@
     $('toneOut').textContent = Math.round(num('tone')) + '%'
     $('impactOut').textContent = Math.round(num('impact')) + '%'
     $('outlineOut').textContent = formatMm(num('outlineMm'))
-    $('outlineField').hidden = !state.outline
+    $('outlineField').hidden = !state.outline || state.mode === 'holes'
+    $('holeOut').textContent = formatMm(num('hole'))
+    $('lightOut').textContent = Math.round(num('light')) + '%'
     $('angleOut').textContent = formatNumber(num('angle'), 1) + '°'
     $('widthOut').textContent = formatNumber(num('width'), 1) + ' cm'
     $('contrastOut').textContent = formatNumber(num('contrast'), 2)
@@ -127,16 +153,59 @@
     $('tolOut').textContent = String(Math.round(num('tolerance')))
     $('chokeOut').textContent = state.choke + ' px'
     tolField.hidden = state.knockout === 'none'
+    knockColorField.hidden = state.knockout !== 'color'
+    syncMode()
     updateSpec()
     updateSettingNotes()
     renderNotices()
   }
 
+  function syncMode() {
+    var holes = state.mode === 'holes'
+    document.querySelectorAll('.halftone-only').forEach(function (el) {
+      el.hidden = holes
+    })
+    $('holeFields').hidden = !holes
+    $('viewResult').textContent = holes ? 'Com textura' : 'Halftone'
+    $('modeHint').textContent = holes
+      ? 'A arte original fica inteira, com uma textura que tira tinta para a estampa pesar menos.'
+      : 'Bolinhas no lugar da tinta. O fundo continua transparente.'
+    var angleHint = '22,5° deixa o padrão diagonal e evita cara de grade.'
+    if (holes && state.texture === 'stripes') angleHint = '22,5° inclina as listras. Em 0° ou 90° elas acompanham o fio do tecido e parecem mais marcadas.'
+    if (holes && state.texture === 'grid') angleHint = '22,5° gira a grade. Alinhada ao tecido, a trama fica mais evidente.'
+    if (holes && state.texture === 'circles') angleHint = '22,5° espalha os círculos na diagonal, para não virar uma grade.'
+    $('angleHint').textContent = angleHint
+    $('holeLabel').textContent = state.texture === 'circles' ? 'Tamanho do furo' : 'Largura do vão'
+    var textureHint = 'Círculos tiram tinta sem formar faixa. De perto aparecem; de longe a cor continua lisa.'
+    if (state.texture === 'stripes') textureHint = 'Listras com vão de 0,7 mm e pelo menos 0,5 mm de tinta entre elas. A inclinação evita a faixa reta na camiseta.'
+    if (state.texture === 'grid') textureHint = 'Duas listras cruzadas. O alívio é o total de tinta que sai, somando as duas direções.'
+    $('textureHint').textContent = textureHint
+    $('shapeHint').textContent = state.shape === 'ellipse'
+      ? 'O ponto alonga na direção do ângulo, encadeia no tom fechado e deixa uma fresta na outra direção.'
+      : 'O redondo segura o pó em qualquer direção. O elíptico alonga o ponto, encadeia no meio-tom e deixa uma fresta na outra direção.'
+  }
+
   function updateSpec() {
+    if (state.mode === 'holes') {
+      var holes = window.Halftone.textureMetrics(state.texture, num('hole'), num('light') / 100)
+      var textureName = state.texture === 'stripes' ? 'listras' : (state.texture === 'grid' ? 'grade' : 'círculos')
+      var holeLine = textureName + ' de <strong>' + formatMm(num('hole')) + '</strong> · alívio <strong>' +
+        formatNumber(holes.open * 100, 0) + '%</strong> · intervalo <strong>' + formatMm(holes.pitchMm) + '</strong>'
+      if (!state.bitmap || !Number.isFinite(num('width'))) {
+        specEl.innerHTML = 'Estampa com ' + holeLine + '.'
+        return
+      }
+      var holeSize = outputSize(state.bitmap, num('width'))
+      state.widthCm = holeSize.widthCm
+      state.heightCm = holeSize.heightCm
+      specEl.innerHTML = '<strong>' + formatNumber(holeSize.widthCm, 1) + ' × ' + formatNumber(holeSize.heightCm, 1) + ' cm</strong> · ' +
+        holeSize.widthPx.toLocaleString('pt-BR') + ' × ' + holeSize.heightPx.toLocaleString('pt-BR') + ' px · <strong>300 DPI</strong> · ' + holeLine
+      return
+    }
     var metrics = window.Halftone.screenMetrics(num('dot'), num('gap') / 100)
     var lpi = formatNumber(metrics.lpi, 1)
     if (!state.bitmap || !Number.isFinite(num('width'))) {
-      specEl.innerHTML = 'Predefinição em <strong>' + lpi + ' LPI</strong>, bolinha de <strong>' + formatMm(num('dot')) + '</strong>, ângulo <strong>' + formatNumber(num('angle'), 1) + '°</strong>.'
+      specEl.innerHTML = 'Predefinição em <strong>' + lpi + ' LPI</strong>, ' + (state.shape === 'ellipse' ? 'elipse' : 'bolinha') + ' de <strong>' + formatMm(num('dot')) + '</strong>, ângulo <strong>' + formatNumber(num('angle'), 1) + '°</strong>.'
       return
     }
     var size = outputSize(state.bitmap, num('width'))
@@ -144,16 +213,64 @@
     state.heightCm = size.heightCm
     specEl.innerHTML = '<strong>' + formatNumber(size.widthCm, 1) + ' × ' + formatNumber(size.heightCm, 1) + ' cm</strong> · ' +
       size.widthPx.toLocaleString('pt-BR') + ' × ' + size.heightPx.toLocaleString('pt-BR') + ' px · <strong>300 DPI</strong> · <strong>' +
-      lpi + ' LPI</strong> · bolinha <strong>' + formatMm(num('dot')) + '</strong>'
+      lpi + ' LPI</strong> · ' + (state.shape === 'ellipse' ? 'elipse' : 'bolinha') + ' <strong>' + formatMm(num('dot')) + '</strong>' +
+      (state.smart ? ' · transição' : '') +
+      (state.invert ? ' · tons invertidos' : '')
+  }
+
+  function pushPracticeNotes(notes) {
+    if (num('opacity') < 40) {
+      notes.push({ level: 'warn', text: 'Corte de opacidade abaixo de 40%. A borda semitransparente ganha branco por baixo e vira auréola na prensa.' })
+    }
+    if (state.choke === 0) {
+      notes.push({ level: 'warn', text: 'Base branca sem encolhimento. Um desvio mínimo na prensa deixa um fio branco na borda da cor.' })
+    }
+    if (state.knockout !== 'none' && num('tolerance') < 10) {
+      notes.push({ level: 'warn', text: 'Tolerância abaixo de 10. Só sai a cor exata, e a borda suavizada dessa cor continua imprimindo.' })
+    }
+    if (state.outline && state.mode !== 'holes' && num('outlineMm') < 0.5) {
+      notes.push({ level: 'warn', text: 'Contorno abaixo de 0,5 mm. Linha mais fina que isso costuma rachar ou sumir na lavagem.' })
+    }
+    if (state.bitmap) {
+      var size = outputSize(state.bitmap, num('width'))
+      if (state.bitmap.width < size.widthPx * 0.67) {
+        notes.push({
+          level: 'info',
+          text: 'Para ficar nítida a 300 DPI nessa largura, a arte precisa ter cerca de ' + size.widthPx.toLocaleString('pt-BR') + ' px. A atual tem ' + state.bitmap.width.toLocaleString('pt-BR') + ' px.',
+        })
+      }
+    }
   }
 
   function updateSettingNotes() {
     var notes = []
+    if (state.mode === 'holes') {
+      var texture = window.Halftone.textureMetrics(state.texture, num('hole'), num('light') / 100)
+      if (num('hole') < 0.7) {
+        notes.push({ level: 'warn', text: 'Vão abaixo de 0,7 mm. O pó e a prensa costumam fechar esse espaço, e a textura pode não aparecer na camiseta.' })
+      }
+      if (texture.open < 0.149) {
+        notes.push({ level: 'warn', text: 'Alívio abaixo de 15%. A cobertura passa de 85% e os vãos pequenos tendem a fechar na prensa.' })
+      }
+      if (texture.clamped) {
+        notes.push({ level: 'info', text: 'O intervalo foi aumentado para sobrar pelo menos 0,5 mm de tinta entre os vãos. Sem isso a faixa racha ou o furo vira rasgo.' })
+      }
+      var angle = num('angle')
+      if (state.texture !== 'circles' && (angle <= 5 || angle >= 85)) {
+        notes.push({ level: 'info', text: 'Textura em 0° ou 90°. A listra acompanha o fio do tecido e parece mais marcada. 22,5° disfarça.' })
+      }
+      pushPracticeNotes(notes)
+      state.settingNotes = notes
+      return
+    }
     var metrics = window.Halftone.screenMetrics(num('dot'), num('gap') / 100)
     if (metrics.lpi > 38) {
       notes.push({ level: 'warn', text: 'Frequência acima de 38 LPI. Aumente o tamanho das bolinhas para o pó adesivo ter onde ancorar.' })
     } else if (metrics.lpi < 18) {
       notes.push({ level: 'info', text: 'Frequência abaixo de 18 LPI. O efeito fica gráfico e as bolinhas aparecem de longe.' })
+    }
+    if (num('dot') < 0.7) {
+      notes.push({ level: 'warn', text: 'Bolinha abaixo de 0,7 mm. O pó pode não ancorar, e o ponto sai na lavagem.' })
     }
     if (num('min') < 0.5) {
       notes.push({ level: 'warn', text: 'Mínimo abaixo de 0,5 mm. Na prensa, essas bolinhas podem não transferir.' })
@@ -161,16 +278,19 @@
     if (num('min') > num('dot')) {
       notes.push({ level: 'warn', text: 'O mínimo ficou maior que a bolinha. Ele será limitado ao tamanho escolhido.' })
     }
-    if (state.bitmap) {
-      var size = outputSize(state.bitmap, num('width'))
-      var needed = size.widthPx
-      if (state.bitmap.width < needed * 0.67) {
-        notes.push({
-          level: 'info',
-          text: 'Para ficar nítida a 300 DPI nessa largura, a arte precisa ter cerca de ' + needed.toLocaleString('pt-BR') + ' px. A atual tem ' + state.bitmap.width.toLocaleString('pt-BR') + ' px.',
-        })
+    if (num('gap') === 0 && state.shape !== 'ellipse') {
+      notes.push({ level: 'warn', text: 'Sem espaço entre as bolinhas. No tom cheio elas encostam e o pó pode fechar a estampa numa chapa.' })
+    }
+    if (state.shape === 'ellipse') {
+      var axes = window.Halftone.ellipseMetrics(num('dot'), num('gap') / 100)
+      if (axes.slotMm < 0.6) {
+        notes.push({ level: 'warn', text: 'A fresta do ponto elíptico ficou em ' + formatMm(axes.slotMm) + ', abaixo de 0,6 mm. O pó costuma fechar esse vão. Para a malha respirar, aumente o espaço ou use a predefinição Aberto.' })
+      }
+      if (axes.minorMm < 0.5) {
+        notes.push({ level: 'warn', text: 'O eixo curto do ponto elíptico ficou abaixo de 0,5 mm. Ponto isolado nesse tamanho pode sair na lavagem.' })
       }
     }
+    pushPracticeNotes(notes)
     state.settingNotes = notes
   }
 
@@ -219,7 +339,14 @@
     $('angle').value = String(preset.angle)
     $('contrast').value = String(preset.contrast)
     state.choke = preset.choke
+    state.shape = preset.shape || 'round'
+    state.levels = !!preset.levels
     setPressed('[data-choke]', 'data-choke', String(preset.choke))
+    setPressed('[data-shape]', 'data-shape', state.shape)
+    $('levels').setAttribute('aria-pressed', state.levels ? 'true' : 'false')
+    $('shapeHint').textContent = state.shape === 'ellipse'
+      ? 'O ponto alonga na direção do ângulo, encadeia no tom fechado e deixa uma fresta na outra direção.'
+      : 'O redondo segura o pó em qualquer direção. O elíptico alonga o ponto, encadeia no meio-tom e deixa uma fresta na outra direção.'
     document.querySelectorAll('[data-preset]').forEach(function (button) {
       button.classList.toggle('is-active', button.getAttribute('data-preset') === name)
     })
@@ -227,15 +354,29 @@
     schedule()
   }
 
+  function syncMeshPressed() {
+    setPressed('[data-mesh]', 'data-mesh', state.mesh)
+  }
+
   function setKnockout(value, options) {
     state.knockout = value
+    if (!options || !options.fromMesh) {
+      if (state.mesh === 'light' && value !== 'white') state.mesh = ''
+      if (state.mesh === 'dark' && value !== 'black') {
+        state.mesh = ''
+        state.invert = false
+      }
+    }
+    syncMeshPressed()
     setPressed('[data-knock]', 'data-knock', value)
     if (value === 'white') {
-      knockHint.textContent = 'Remove o branco do fundo e também os brancos da arte. Se o branco for tinta, use Nenhum e mande um PNG transparente.'
+      knockHint.textContent = 'Tira o branco da arte inteira, não só do fundo. Numa camiseta branca, esse pedaço fica só o tecido.'
     } else if (value === 'black') {
-      knockHint.textContent = 'Remove o preto para a camiseta escura aparecer no lugar dele. Pretos da arte também saem.'
+      knockHint.textContent = 'Tira o preto da arte inteira. Numa camiseta preta, esse pedaço fica só o tecido.'
+    } else if (value === 'color') {
+      knockHint.textContent = 'Tira da arte a cor escolhida, e as parecidas dentro da tolerância. A camiseta aparece no lugar dela.'
     } else {
-      knockHint.textContent = 'A transparência da arte é respeitada. Pixels semitransparentes fracos não entram, para não criar auréola.'
+      knockHint.textContent = 'Nenhuma cor é tirada. A transparência da arte é respeitada.'
     }
     syncLabels()
     if (!options || !options.silent) schedule()
@@ -403,7 +544,9 @@
     state.busy = true
     viewport.classList.add('is-busy')
     progressEl.hidden = false
-    progressLabel.textContent = 'Montando as bolinhas…'
+    progressLabel.textContent = state.mode === 'holes'
+      ? 'Aplicando a textura…'
+      : (state.smart ? 'Lendo onde a arte muda…' : 'Montando as bolinhas…')
     progressBar.style.width = '0%'
     syncButtons()
     state.resultNotes = []
@@ -423,7 +566,10 @@
       state.source = source
       var params = readParams()
       params.dpi = DPI
-      var result = await window.Halftone.createHalftone(source, params, function () {
+      var generate = window.Halftone.createHalftone
+      if (state.mode === 'holes') generate = window.Halftone.createPerforated
+      else if (state.smart) generate = window.Halftone.createSmart
+      var result = await generate(source, params, function () {
         return my === state.job
       }, function (done, total) {
         if (my !== state.job || !total) return
@@ -448,6 +594,7 @@
 
   function notesFromResult(result) {
     var notes = []
+    if (result.kind === 'holes') return notes
     var considered = result.stats.printed + result.stats.dropped
     if (considered > 0 && result.stats.dropped / considered > 0.15) {
       notes.push({
@@ -554,6 +701,12 @@
     viewport.scrollTop -= cursorY - (nextRect.top + pointY * nextRect.height)
   }
 
+  function exportStem(kind) {
+    if (kind === 'holes') return '-furos'
+    if (kind === 'smart') return '-transicao'
+    return '-halftone'
+  }
+
   function baseName() {
     var name = state.fileName.replace(/\.[^.]+$/, '')
     name = name.replace(/[^\p{L}\p{N}\-_]+/gu, '-').replace(/^-+|-+$/g, '')
@@ -609,7 +762,8 @@
   function exportPng(kind) {
     withExport('Gerando PNG…', async function () {
       var pixels = kind === 'white' ? state.result.underbase : state.result.color
-      var suffix = kind === 'white' ? '-halftone-base-branca.png' : '-halftone-dtf.png'
+      var suffix = exportStem(state.result.kind)
+      suffix = kind === 'white' ? suffix + '-base-branca.png' : suffix + '-dtf.png'
       var bytes = await encodePng(pixels, state.result.width, state.result.height, DPI)
       saveBytes(bytes, baseName() + suffix)
     })
@@ -617,12 +771,22 @@
 
   function exportSvg() {
     withExport('Gerando SVG…', async function () {
+      if (state.result.kind === 'holes' || state.result.kind === 'smart') {
+        var colorPng = await encodePng(state.result.color, state.result.width, state.result.height, DPI)
+        var underPng = await encodePng(state.result.underbase, state.result.width, state.result.height, DPI)
+        saveBlob(window.HalftoneVector.buildRasterSvg(state.result, colorPng, underPng), baseName() + exportStem(state.result.kind) + '.svg')
+        return
+      }
       saveBlob(window.HalftoneVector.buildSvg(state.result), baseName() + '-halftone.svg')
     })
   }
 
   function exportPdf() {
     withExport('Gerando PDF…', async function () {
+      if (state.result.kind === 'holes' || state.result.kind === 'smart') {
+        saveBlob(await window.HalftoneVector.buildRasterPdf(state.result), baseName() + exportStem(state.result.kind) + '.pdf')
+        return
+      }
       saveBlob(window.HalftoneVector.buildPdf(state.result), baseName() + '-halftone.pdf')
     })
   }
@@ -731,6 +895,45 @@
       applyPreset(button.getAttribute('data-preset'))
     })
   })
+  document.querySelectorAll('[data-shape]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      state.shape = button.getAttribute('data-shape')
+      setPressed('[data-shape]', 'data-shape', state.shape)
+      clearPreset()
+      syncLabels()
+      schedule()
+    })
+  })
+  $('smart').addEventListener('click', function () {
+    state.smart = !state.smart
+    $('smart').setAttribute('aria-pressed', state.smart ? 'true' : 'false')
+    syncLabels()
+    schedule()
+  })
+  $('levels').addEventListener('click', function () {
+    state.levels = !state.levels
+    $('levels').setAttribute('aria-pressed', state.levels ? 'true' : 'false')
+    clearPreset()
+    syncLabels()
+    schedule()
+  })
+  document.querySelectorAll('[data-mesh]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var value = button.getAttribute('data-mesh')
+      state.knockoutTouched = true
+      if (state.mesh === value) {
+        state.mesh = ''
+        state.invert = false
+        setKnockout('none', { fromMesh: true })
+        return
+      }
+      state.mesh = value
+      state.invert = value === 'dark'
+      state.levels = true
+      $('levels').setAttribute('aria-pressed', 'true')
+      setKnockout(value === 'dark' ? 'black' : 'white', { fromMesh: true })
+    })
+  })
   document.querySelectorAll('[data-knock]').forEach(function (button) {
     button.addEventListener('click', function () {
       state.knockoutTouched = true
@@ -776,6 +979,32 @@
     state.grayscale = !state.grayscale
     $('gray').setAttribute('aria-pressed', state.grayscale ? 'true' : 'false')
     schedule()
+  })
+
+  document.querySelectorAll('[data-texture]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      state.texture = button.getAttribute('data-texture')
+      setPressed('[data-texture]', 'data-texture', state.texture)
+      syncLabels()
+      if (state.mode === 'holes') schedule()
+    })
+  })
+  document.querySelectorAll('[data-mode]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      state.mode = button.getAttribute('data-mode')
+      setPressed('[data-mode]', 'data-mode', state.mode)
+      syncLabels()
+      schedule()
+    })
+  })
+  ;['hole', 'light'].forEach(function (id) {
+    $(id).addEventListener('input', function () {
+      syncLabels()
+      if (state.mode === 'holes') schedule()
+    })
+  })
+  $('knockColor').addEventListener('input', function () {
+    if (state.knockout === 'color') schedule()
   })
 
   $('outline').addEventListener('click', function () {

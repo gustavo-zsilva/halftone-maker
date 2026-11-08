@@ -38,19 +38,79 @@
         <button class="text-button" id="demo" type="button">Usar um exemplo</button>
       </div>
 
-      <div class="presets" role="group" aria-label="Predefinições">
+      <div class="presets halftone-only" role="group" aria-label="Predefinições">
         <button type="button" data-preset="open" title="Bolinhas grandes, visual gráfico">Aberto</button>
         <button type="button" data-preset="dtf" class="is-active" title="Ponto de partida para transfer">DTF</button>
         <button type="button" data-preset="fine" title="Mais detalhe, menos folga para o pó">Fino</button>
+        <button type="button" data-preset="mesh" title="35 LPI, ponto elíptico, níveis ligados">Malha</button>
       </div>
 
       <div class="field">
+        <div class="field-top">
+          <span id="modeLabel">Tipo de estampa</span>
+        </div>
+        <div class="seg" role="radiogroup" aria-labelledby="modeLabel">
+          <button type="button" data-mode="halftone" aria-pressed="true">Halftone</button>
+          <button type="button" data-mode="holes" aria-pressed="false">Furos leves</button>
+        </div>
+        <p class="hint" id="modeHint">Bolinhas no lugar da tinta. O fundo continua transparente.</p>
+      </div>
+
+      <div id="holeFields" hidden>
+        <div class="field">
+          <div class="field-top">
+            <span id="textureLabel">Textura</span>
+          </div>
+          <div class="seg" role="radiogroup" aria-labelledby="textureLabel">
+            <button type="button" data-texture="circles" aria-pressed="true">Círculos</button>
+            <button type="button" data-texture="stripes" aria-pressed="false">Listras</button>
+            <button type="button" data-texture="grid" aria-pressed="false">Grade</button>
+          </div>
+          <p class="hint" id="textureHint">Círculos tiram tinta sem formar faixa. De perto aparecem; de longe a cor continua lisa.</p>
+        </div>
+        <div class="field">
+          <div class="field-top">
+            <label for="hole" id="holeLabel">Tamanho do furo</label>
+            <output id="holeOut" for="hole">0,70 mm</output>
+          </div>
+          <input id="hole" type="range" min="0.4" max="1" step="0.05" value="0.7">
+          <p class="hint">0,7 mm é o tamanho que costuma continuar aberto depois do pó e da prensa. Furos menores fecham. De longe a estampa parece lisa; o furo aparece de perto.</p>
+        </div>
+        <div class="field">
+          <div class="field-top">
+            <label for="light">Alívio</label>
+            <output id="lightOut" for="light">20%</output>
+          </div>
+          <input id="light" type="range" min="8" max="22" step="1" value="20">
+          <p class="hint">Quanto de tinta sai. Em 20% a cobertura fica em 80%, abaixo do ponto em que os furos costumam fechar. A borda de fora fica inteira.</p>
+        </div>
+      </div>
+
+      <div class="field halftone-only">
         <div class="field-top">
           <label for="dot">Tamanho das bolinhas</label>
           <output id="dotOut" for="dot">0,85 mm</output>
         </div>
         <input id="dot" type="range" min="0.55" max="2" step="0.01" value="0.85">
         <p class="hint">Diâmetro no ponto mais cheio da arte. Entre 0,7 e 1,2 mm costuma transferir bem.</p>
+      </div>
+
+      <div class="field halftone-only">
+        <div class="field-top">
+          <span id="shapeLabel">Forma do ponto</span>
+        </div>
+        <div class="seg" role="radiogroup" aria-labelledby="shapeLabel">
+          <button type="button" data-shape="round" aria-pressed="true">Redondo</button>
+          <button type="button" data-shape="ellipse" aria-pressed="false">Elíptico</button>
+        </div>
+        <p class="hint" id="shapeHint">O redondo segura o pó em qualquer direção. O elíptico alonga o ponto, encadeia no meio-tom e deixa uma fresta na outra direção.</p>
+      </div>
+
+      <div class="field halftone-only">
+        <div class="seg">
+          <button type="button" id="smart" aria-pressed="false">Inteligente</button>
+        </div>
+        <p class="hint" id="smartHint">As cores chapadas ficam inteiras. As bolinhas entram só onde o tom muda, e grandes o bastante para a arte não perder corpo. Na camiseta preta, essa passagem abre em direção ao preto. Na clara, em direção ao branco.</p>
       </div>
 
       <div class="field">
@@ -65,7 +125,7 @@
         <p class="hint" id="sizeHint">A altura acompanha a proporção da arte. A saída fica em 300 DPI.</p>
       </div>
 
-      <div class="field">
+      <div class="field halftone-only">
         <div class="field-top">
           <label for="gap">Espaço entre bolinhas</label>
           <output id="gapOut" for="gap">8%</output>
@@ -74,7 +134,7 @@
         <p class="hint">Mesmo no tom mais fechado sobra um vão. O tecido respira e o pó tem onde ancorar.</p>
       </div>
 
-      <div class="field">
+      <div class="field halftone-only">
         <div class="field-top">
           <label for="min">Tamanho mínimo</label>
           <output id="minOut" for="min">0,50 mm</output>
@@ -83,7 +143,7 @@
         <p class="hint">Bolinhas menores que isso saem do arquivo. Abaixo de 0,5 mm o pó costuma não segurar.</p>
       </div>
 
-      <div class="field">
+      <div class="field halftone-only">
         <div class="field-top">
           <label for="tone">Abertura dos claros</label>
           <output id="toneOut" for="tone">50%</output>
@@ -92,13 +152,20 @@
         <p class="hint">0% mantém o mesmo tamanho em toda a cor. 100% encolhe as bolinhas nos tons claros, como numa foto.</p>
       </div>
 
-      <div class="field">
+      <div class="field halftone-only">
         <div class="field-top">
           <label for="impact">Impacto</label>
           <output id="impactOut" for="impact">40%</output>
         </div>
         <input id="impact" type="range" min="0" max="100" step="1" value="40">
         <p class="hint">Deixa os tons escuros mais cheios e os claros mais abertos. O vão entre as bolinhas continua, então a leveza do halftone fica.</p>
+      </div>
+
+      <div class="field halftone-only">
+        <div class="seg">
+          <button type="button" id="levels" aria-pressed="false">Níveis de impressão</button>
+        </div>
+        <p class="hint">O preto mais fundo da arte chega a 100% de tinta e o branco sujo, de 248 para cima, sai. Os tons do meio continuam na mesma ordem.</p>
       </div>
 
       <div class="field">
@@ -108,7 +175,7 @@
         <p class="hint">As bolinhas passam a ser cinza, no tom de cada parte da arte.</p>
       </div>
 
-      <div class="field">
+      <div class="field halftone-only">
         <div class="seg">
           <button type="button" id="outline" aria-pressed="false">Contorno sólido</button>
         </div>
@@ -129,34 +196,51 @@
           <output id="angleOut" for="angle">22,5°</output>
         </div>
         <input id="angle" type="range" min="0" max="90" step="0.5" value="22.5">
-        <p class="hint">22,5° deixa o padrão diagonal e evita cara de grade.</p>
+        <p class="hint" id="angleHint">22,5° deixa o padrão diagonal e evita cara de grade.</p>
+      </div>
+
+      <div class="field halftone-only">
+        <div class="field-top">
+          <span id="meshLabel">Camiseta</span>
+        </div>
+        <div class="seg" role="group" aria-labelledby="meshLabel">
+          <button type="button" data-mesh="light" aria-pressed="false">Clara</button>
+          <button type="button" data-mesh="dark" aria-pressed="false">Preta</button>
+        </div>
+        <p class="hint" id="meshHint">Clara tira o branco e deixa a tinta nos escuros. Preta inverte os tons, como o Ctrl+I, e tira o preto: a tinta vai para os claros e a malha faz o papel do preto. A cor de cada bolinha continua a da arte.</p>
       </div>
 
       <div class="field">
         <div class="field-top">
-          <span id="knockLabel">Fundo a remover</span>
+          <span id="knockLabel">Cor a remover</span>
         </div>
         <div class="seg" role="radiogroup" aria-labelledby="knockLabel">
-          <button type="button" data-knock="none" aria-pressed="true">Nenhum</button>
+          <button type="button" data-knock="none" aria-pressed="true">Nenhuma</button>
           <button type="button" data-knock="white" aria-pressed="false">Branco</button>
           <button type="button" data-knock="black" aria-pressed="false">Preto</button>
+          <button type="button" data-knock="color" aria-pressed="false">Outra</button>
         </div>
-        <p class="hint" id="knockHint">Com Nenhum, a transparência da arte é respeitada. Branco e preto também removem essa cor dentro do desenho.</p>
+        <div class="knock-color" id="knockColorField" hidden>
+          <input id="knockColor" type="color" value="#1d4e89" aria-label="Cor a remover da arte">
+          <span>A camiseta aparece no lugar dessa cor.</span>
+        </div>
+        <p class="hint" id="knockHint">Nenhuma cor é tirada. A transparência da arte é respeitada.</p>
       </div>
 
       <div class="field" id="tolField" hidden>
         <div class="field-top">
-          <label for="tolerance">Tolerância do fundo</label>
+          <label for="tolerance">Tolerância da cor</label>
           <output id="tolOut" for="tolerance">28</output>
         </div>
         <input id="tolerance" type="range" min="0" max="80" step="1" value="28">
+        <p class="hint">Sobe para levar junto os tons parecidos. Desce para tirar só a cor exata.</p>
       </div>
 
       <div id="notices"></div>
 
       <details class="advanced">
         <summary>Ajustes finos</summary>
-        <div class="field">
+        <div class="field halftone-only">
           <div class="field-top">
             <label for="contrast">Contraste do tom</label>
             <output id="contrastOut" for="contrast">1,05</output>
@@ -191,9 +275,12 @@
           <li>PNG em RGB, 300 DPI, no tamanho em centímetros escolhido.</li>
           <li>Só as bolinhas ficam na arte. O fundo sai transparente, sem véu semitransparente.</li>
           <li>Bolinhas redondas e opacas, com piso de 0,5 mm para o pó adesivo segurar.</li>
-          <li>Frequência inicial perto de 28 LPI e ângulo de 22,5°.</li>
+          <li>Frequência inicial perto de 28 LPI e ângulo de 22,5°. A predefinição Malha usa 35 LPI com ponto elíptico.</li>
           <li>A base branca opcional fica um pouco menor que a cor, para não aparecer na borda.</li>
           <li>O SVG e o PDF são vetores no tamanho da prensa, para abrir no Inkscape.</li>
+          <li>Furos leves mantêm a arte e abrem círculos, listras ou grade. O vão parte de 0,7 mm e tira 20% da tinta. A borda de fora fica inteira.</li>
+          <li>Branco, preto ou outra cor podem sair da arte inteira, para a camiseta aparecer no lugar.</li>
+          <li>O halftone inteligente deixa o chapado inteiro e usa bolinha só na passagem de tom.</li>
         </ul>
       </section>
       </div>
@@ -204,7 +291,7 @@
           <button class="ghost" id="downloadPdf" type="button" disabled>Baixar PDF</button>
           <button class="ghost" id="downloadWhite" type="button" disabled>Base branca PNG</button>
         </div>
-        <p class="hint">O SVG abre no Inkscape no tamanho em milímetros. A cor e a base branca ficam em camadas separadas. O contorno sólido, quando ligado, entra nas duas. O PDF leva as mesmas formas em vetor.</p>
+        <p class="hint">O SVG abre no Inkscape no tamanho em milímetros, com a cor e a base branca em camadas. No halftone elas são vetor. Nos furos leves e na transição inteligente, as camadas levam a arte já pronta.</p>
       </div>
     </section>
 

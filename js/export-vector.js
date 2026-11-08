@@ -65,20 +65,33 @@
     return parts.join('')
   }
 
-  function circlesFor(marks, radiusIndex, scale) {
+  function circlesFor(result, scale, under) {
+    var marks = result.marks
+    var ellipse = result.shape === 'ellipse'
+    var stride = ellipse ? 9 : 7
     var groups = new Map()
-    for (var i = 0; i < marks.length; i += 7) {
-      var radius = marks[i + radiusIndex] * scale
-      if (radius <= 0) continue
-      var color = radiusIndex === 3 ? '#ffffff' : hex(marks[i + 4], marks[i + 5], marks[i + 6])
+    for (var i = 0; i < marks.length; i += stride) {
+      var color = under ? '#ffffff' : hex(marks[i + (ellipse ? 6 : 4)], marks[i + (ellipse ? 7 : 5)], marks[i + (ellipse ? 8 : 6)])
+      var shape = ''
+      if (ellipse) {
+        var rx = marks[i + (under ? 4 : 2)] * scale
+        var ry = marks[i + (under ? 5 : 3)] * scale
+        if (rx <= 0 || ry <= 0) continue
+        var cx = num(marks[i] * scale)
+        var cy = num(marks[i + 1] * scale)
+        shape = '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + num(rx) + '" ry="' + num(ry) +
+          '" transform="rotate(' + num(result.angle || 0) + ' ' + cx + ' ' + cy + ')"/>'
+      } else {
+        var radius = marks[i + (under ? 3 : 2)] * scale
+        if (radius <= 0) continue
+        shape = '<circle cx="' + num(marks[i] * scale) + '" cy="' + num(marks[i + 1] * scale) + '" r="' + num(radius) + '"/>'
+      }
       var bucket = groups.get(color)
       if (!bucket) {
         bucket = []
         groups.set(color, bucket)
       }
-      bucket.push(
-        '<circle cx="' + num(marks[i] * scale) + '" cy="' + num(marks[i + 1] * scale) + '" r="' + num(radius) + '"/>'
-      )
+      bucket.push(shape)
     }
     var parts = []
     groups.forEach(function (circles, color) {
@@ -115,13 +128,13 @@
       clip,
       '<g id="base-branca" inkscape:groupmode="layer" inkscape:label="Base branca">',
       open,
-      circlesFor(result.marks, 3, page.scale),
+      circlesFor(result, page.scale, true),
       close,
       underRects,
       '</g>',
       '<g id="cor" inkscape:groupmode="layer" inkscape:label="Cor">',
       open,
-      circlesFor(result.marks, 2, page.scale),
+      circlesFor(result, page.scale, false),
       close,
       colorRects,
       '</g>',
@@ -173,24 +186,47 @@
     return body.join('')
   }
 
+  function ellipsePath(cx, cy, rx, ry, angleDeg) {
+    var rad = (angleDeg || 0) * Math.PI / 180
+    var cos = Math.cos(rad)
+    var sin = Math.sin(rad)
+    return 'q\n' +
+      num(cos * rx) + ' ' + num(-sin * rx) + ' ' + num(sin * ry) + ' ' + num(cos * ry) + ' ' + num(cx) + ' ' + num(cy) + ' cm\n' +
+      circlePath(0, 0, 1) +
+      'Q\n'
+  }
+
   function buildPdf(result) {
     var pt = 72 / result.dpi
     var pageW = result.width * pt
     var pageH = result.height * pt
     var marks = result.marks
+    var ellipse = result.shape === 'ellipse'
+    var stride = ellipse ? 9 : 7
     var body = []
     var clip = result.outline ? pdfContour(result.outline.contours, pt, pageH) : ''
     if (clip) body.push('q\n' + clip + 'W*\nn\n')
     var last = ''
-    for (var i = 0; i < marks.length; i += 7) {
-      var radius = marks[i + 2] * pt
-      if (radius <= 0) continue
-      var key = (marks[i + 4] / 255).toFixed(4) + ' ' + (marks[i + 5] / 255).toFixed(4) + ' ' + (marks[i + 6] / 255).toFixed(4)
+    for (var i = 0; i < marks.length; i += stride) {
+      var key
+      var path
+      if (ellipse) {
+        var rx = marks[i + 2] * pt
+        var ry = marks[i + 3] * pt
+        if (rx <= 0 || ry <= 0) continue
+        key = (marks[i + 6] / 255).toFixed(4) + ' ' + (marks[i + 7] / 255).toFixed(4) + ' ' + (marks[i + 8] / 255).toFixed(4)
+        path = ellipsePath(marks[i] * pt, pageH - marks[i + 1] * pt, rx, ry, -(result.angle || 0))
+      } else {
+        var radius = marks[i + 2] * pt
+        if (radius <= 0) continue
+        key = (marks[i + 4] / 255).toFixed(4) + ' ' + (marks[i + 5] / 255).toFixed(4) + ' ' + (marks[i + 6] / 255).toFixed(4)
+        path = circlePath(marks[i] * pt, pageH - marks[i + 1] * pt, radius)
+      }
       if (key !== last) {
         body.push(key + ' rg\n')
         last = key
       }
-      body.push(circlePath(marks[i] * pt, pageH - marks[i + 1] * pt, radius))
+      body.push(path)
     }
     if (clip) body.push('Q\n')
     if (result.outline) {
@@ -225,8 +261,119 @@
     return new Blob([body + xref + trailer], { type: 'application/pdf' })
   }
 
+  function base64(bytes) {
+    var bin = ''
+    var chunk = 0x8000
+    for (var i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk))
+    }
+    return btoa(bin)
+  }
+
+  function buildRasterSvg(result, colorBytes, underBytes) {
+    var page = pageMm(result)
+    var width = num(page.width)
+    var height = num(page.height)
+    var colorHref = 'data:image/png;base64,' + base64(colorBytes)
+    var underHref = 'data:image/png;base64,' + base64(underBytes)
+    var image = function (href) {
+      return '<image href="' + href + '" width="' + width + '" height="' + height + '" preserveAspectRatio="none"/>'
+    }
+    var parts = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="' + width + 'mm" height="' + height + 'mm" viewBox="0 0 ' + width + ' ' + height + '">',
+      '<g id="base-branca" inkscape:groupmode="layer" inkscape:label="Base branca">',
+      image(underHref),
+      '</g>',
+      '<g id="cor" inkscape:groupmode="layer" inkscape:label="Cor">',
+      image(colorHref),
+      '</g>',
+      '</svg>',
+    ]
+    return new Blob(parts, { type: 'image/svg+xml' })
+  }
+
+  async function deflateZlib(bytes) {
+    var stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate'))
+    return new Uint8Array(await new Response(stream).arrayBuffer())
+  }
+
+  function ascii(value) {
+    return new TextEncoder().encode(value)
+  }
+
+  function concatBytes(parts) {
+    var total = 0
+    for (var i = 0; i < parts.length; i++) total += parts[i].length
+    var out = new Uint8Array(total)
+    var offset = 0
+    for (var j = 0; j < parts.length; j++) {
+      out.set(parts[j], offset)
+      offset += parts[j].length
+    }
+    return out
+  }
+
+  async function buildRasterPdf(result) {
+    var width = result.width
+    var height = result.height
+    var pt = 72 / result.dpi
+    var pageW = (width * pt).toFixed(2)
+    var pageH = (height * pt).toFixed(2)
+    var rgb = new Uint8Array(width * height * 3)
+    var alpha = new Uint8Array(width * height)
+    var src = result.color
+    for (var i = 0, p = 0, q = 0; i < alpha.length; i++, p += 4, q += 3) {
+      rgb[q] = src[p]
+      rgb[q + 1] = src[p + 1]
+      rgb[q + 2] = src[p + 2]
+      alpha[i] = src[p + 3]
+    }
+    var rgbZ = await deflateZlib(rgb)
+    var alphaZ = await deflateZlib(alpha)
+    var content = ascii('q\n' + pageW + ' 0 0 ' + pageH + ' 0 0 cm\n/Im Do\nQ\n')
+    var objects = [
+      ascii('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n'),
+      ascii('2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n'),
+      ascii('3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pageW + ' ' + pageH + '] /Contents 4 0 R /Resources << /XObject << /Im 5 0 R >> >> >>\nendobj\n'),
+      concatBytes([
+        ascii('4 0 obj\n<< /Length ' + content.length + ' >>\nstream\n'),
+        content,
+        ascii('endstream\nendobj\n'),
+      ]),
+      concatBytes([
+        ascii('5 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + width + ' /Height ' + height + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Interpolate false /Filter /FlateDecode /Length ' + rgbZ.length + ' /SMask 6 0 R >>\nstream\n'),
+        rgbZ,
+        ascii('\nendstream\nendobj\n'),
+      ]),
+      concatBytes([
+        ascii('6 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + width + ' /Height ' + height + ' /ColorSpace /DeviceGray /BitsPerComponent 8 /Interpolate false /Filter /FlateDecode /Length ' + alphaZ.length + ' >>\nstream\n'),
+        alphaZ,
+        ascii('\nendstream\nendobj\n'),
+      ]),
+    ]
+    var header = ascii('%PDF-1.4\n')
+    var offset = header.length
+    var offsets = [0]
+    var chunks = [header]
+    for (var n = 0; n < objects.length; n++) {
+      offsets.push(offset)
+      chunks.push(objects[n])
+      offset += objects[n].length
+    }
+    var xref = 'xref\n0 7\n0000000000 65535 f \n'
+    for (var k = 1; k <= 6; k++) {
+      xref += String(offsets[k]).padStart(10, '0') + ' 00000 n \n'
+    }
+    xref += 'trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n' + offset + '\n%%EOF\n'
+    chunks.push(ascii(xref))
+    return new Blob([concatBytes(chunks)], { type: 'application/pdf' })
+  }
+
   window.HalftoneVector = {
     buildSvg: buildSvg,
     buildPdf: buildPdf,
+    buildRasterSvg: buildRasterSvg,
+    buildRasterPdf: buildRasterPdf,
   }
 })()
