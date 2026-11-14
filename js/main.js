@@ -26,6 +26,9 @@
   var empty = $('empty')
   var view = $('view')
   var viewCtx = view.getContext('2d')
+  var overlay = $('selectOverlay')
+  var overlayCtx = overlay.getContext('2d')
+  var brushCursor = $('brushCursor')
   var specEl = $('spec')
   var progressEl = $('progress')
   var progressLabel = $('progressLabel')
@@ -58,6 +61,16 @@
     mesh: '',
     outline: false,
     smart: false,
+    selecting: false,
+    selectMode: 'solid',
+    pick: 'brush',
+    wandAll: false,
+    mask: null,
+    maskW: 0,
+    maskH: 0,
+    maskCount: 0,
+    baseColor: null,
+    baseUnder: null,
     choke: 1,
     settingNotes: [],
     resultNotes: [],
@@ -180,6 +193,12 @@
     if (state.texture === 'stripes') textureHint = 'Listras com vão de 0,7 mm e pelo menos 0,5 mm de tinta entre elas. A inclinação evita a faixa reta na camiseta.'
     if (state.texture === 'grid') textureHint = 'Duas listras cruzadas. O alívio é o total de tinta que sai, somando as duas direções.'
     $('textureHint').textContent = textureHint
+    $('selectSolid').textContent = holes ? 'Sem furos' : 'Tirar halftone'
+    $('selectDots').textContent = holes ? 'Com furos' : 'Manter halftone'
+    $('selectHint').textContent = holes
+      ? 'O laranja só marca a seleção. Aplicar esconde a marca. A varinha pega a forma da cor clicada; Toda a cor pega essa cor na arte inteira.'
+      : 'O laranja só marca a seleção. Aplicar esconde a marca e deixa a arte chapada nesse trecho. A varinha pega a forma da cor clicada.'
+    $('brushOut').textContent = Math.round(num('brush')) + ' mm'
     $('shapeHint').textContent = state.shape === 'ellipse'
       ? 'O ponto alonga na direção do ângulo, encadeia no tom fechado e deixa uma fresta na outra direção.'
       : 'O redondo segura o pó em qualquer direção. O elíptico alonga o ponto, encadeia no meio-tom e deixa uma fresta na outra direção.'
@@ -314,6 +333,9 @@
     $('viewResult').disabled = !state.result
     $('viewWhite').disabled = !state.result
     $('viewOriginal').disabled = !state.source
+    $('selectTool').disabled = !state.result
+    $('selectApply').disabled = !state.selecting
+    $('selectClear').disabled = !state.maskCount
   }
 
   function setPressed(selector, attr, value) {
@@ -498,6 +520,12 @@
     state.fileName = name || 'arte'
     state.result = null
     state.source = null
+    state.mask = null
+    state.maskW = 0
+    state.maskH = 0
+    state.maskCount = 0
+    state.baseColor = null
+    state.baseUnder = null
     state.knockoutTouched = false
     state.resultNotes = []
     dropTitle.textContent = 'Trocar arte'
@@ -577,6 +605,10 @@
       })
       if (!result || my !== state.job) return
       state.result = result
+      state.baseColor = new Uint8ClampedArray(result.color)
+      state.baseUnder = new Uint8ClampedArray(result.underbase)
+      resizeMask(result.width, result.height)
+      applySelection()
       state.resultNotes = notesFromResult(result)
       paint()
     } catch (error) {
@@ -628,6 +660,11 @@
       view.height = height
     }
     viewCtx.putImageData(new ImageData(pixels, width, height), 0, 0)
+    if (overlay.width !== width || overlay.height !== height) {
+      overlay.width = width
+      overlay.height = height
+    }
+    redrawOverlay()
     sheet.hidden = false
     empty.hidden = true
     applyZoom()
@@ -650,6 +687,7 @@
     view.style.width = Math.max(1, Math.round(view.width * scale)) + 'px'
     view.style.height = Math.max(1, Math.round(view.height * scale)) + 'px'
     view.style.imageRendering = scale >= 0.999 ? 'pixelated' : 'auto'
+    overlay.style.imageRendering = view.style.imageRendering
   }
 
   function zoomBy(direction) {
@@ -771,7 +809,7 @@
 
   function exportSvg() {
     withExport('Gerando SVG…', async function () {
-      if (state.result.kind === 'holes' || state.result.kind === 'smart') {
+      if (state.maskCount > 0 || state.result.kind === 'holes' || state.result.kind === 'smart') {
         var colorPng = await encodePng(state.result.color, state.result.width, state.result.height, DPI)
         var underPng = await encodePng(state.result.underbase, state.result.width, state.result.height, DPI)
         saveBlob(window.HalftoneVector.buildRasterSvg(state.result, colorPng, underPng), baseName() + exportStem(state.result.kind) + '.svg')
@@ -783,7 +821,7 @@
 
   function exportPdf() {
     withExport('Gerando PDF…', async function () {
-      if (state.result.kind === 'holes' || state.result.kind === 'smart') {
+      if (state.maskCount > 0 || state.result.kind === 'holes' || state.result.kind === 'smart') {
         saveBlob(await window.HalftoneVector.buildRasterPdf(state.result), baseName() + exportStem(state.result.kind) + '.pdf')
         return
       }
@@ -1016,6 +1054,414 @@
   $('outlineMm').addEventListener('input', function () {
     syncLabels()
     if (state.outline) schedule()
+  })
+
+  function resizeMask(width, height) {
+    if (state.mask && state.maskW === width && state.maskH === height) return
+    var next = new Uint8Array(width * height)
+    var count = 0
+    if (state.mask && state.maskW > 0 && state.maskH > 0) {
+      for (var y = 0; y < height; y++) {
+        var sy = Math.min(state.maskH - 1, Math.floor(y * state.maskH / height))
+        for (var x = 0; x < width; x++) {
+          var sx = Math.min(state.maskW - 1, Math.floor(x * state.maskW / width))
+          if (state.mask[sy * state.maskW + sx]) {
+            next[y * width + x] = 1
+            count++
+          }
+        }
+      }
+    }
+    state.mask = next
+    state.maskW = width
+    state.maskH = height
+    state.maskCount = count
+  }
+
+  function sourceInk(x, y) {
+    var source = state.source
+    if (!source || x < 0 || y < 0 || x >= source.width || y >= source.height) return null
+    var offset = (y * source.width + x) * 4
+    var data = source.data
+    var alphaCutoff = Math.round((num('opacity') / 100) * 255)
+    if (data[offset + 3] < alphaCutoff) return null
+    var red = data[offset]
+    var green = data[offset + 1]
+    var blue = data[offset + 2]
+    var tolerance = num('tolerance')
+    var knocked = false
+    if (state.knockout === 'white') knocked = red >= 255 - tolerance && green >= 255 - tolerance && blue >= 255 - tolerance
+    else if (state.knockout === 'black') knocked = red <= tolerance && green <= tolerance && blue <= tolerance
+    else if (state.knockout === 'color') {
+      var target = hexToRgb($('knockColor').value)
+      knocked = Math.abs(red - target[0]) <= tolerance && Math.abs(green - target[1]) <= tolerance && Math.abs(blue - target[2]) <= tolerance
+    }
+    if (knocked) return null
+    if (state.grayscale) {
+      var gray = Math.round(0.299 * red + 0.587 * green + 0.114 * blue)
+      red = gray
+      green = gray
+      blue = gray
+    }
+    return { r: red, g: green, b: blue }
+  }
+
+  function underOk(x, y) {
+    var reach = state.choke
+    if (reach <= 0) return true
+    for (var dy = -reach; dy <= reach; dy++) {
+      for (var dx = -reach; dx <= reach; dx++) {
+        if (!sourceInk(x + dx, y + dy)) return false
+      }
+    }
+    return true
+  }
+
+  function clearPixelAt(buffer, offset) {
+    buffer[offset] = 0
+    buffer[offset + 1] = 0
+    buffer[offset + 2] = 0
+    buffer[offset + 3] = 0
+  }
+
+  function writeSelectionPixel(x, y, solid) {
+    var width = state.result.width
+    var index = y * width + x
+    var offset = index * 4
+    var mark = solid ? 1 : 0
+    if (state.mask[index] !== mark) {
+      state.maskCount += mark ? 1 : -1
+      state.mask[index] = mark
+    }
+    if (solid) {
+      var ink = sourceInk(x, y)
+      if (!ink) {
+        clearPixelAt(state.result.color, offset)
+        clearPixelAt(state.result.underbase, offset)
+        return
+      }
+      state.result.color[offset] = ink.r
+      state.result.color[offset + 1] = ink.g
+      state.result.color[offset + 2] = ink.b
+      state.result.color[offset + 3] = 255
+      if (underOk(x, y)) {
+        state.result.underbase[offset] = 255
+        state.result.underbase[offset + 1] = 255
+        state.result.underbase[offset + 2] = 255
+        state.result.underbase[offset + 3] = 255
+      } else {
+        clearPixelAt(state.result.underbase, offset)
+      }
+      return
+    }
+    if (!state.baseColor) return
+    state.result.color[offset] = state.baseColor[offset]
+    state.result.color[offset + 1] = state.baseColor[offset + 1]
+    state.result.color[offset + 2] = state.baseColor[offset + 2]
+    state.result.color[offset + 3] = state.baseColor[offset + 3]
+    state.result.underbase[offset] = state.baseUnder[offset]
+    state.result.underbase[offset + 1] = state.baseUnder[offset + 1]
+    state.result.underbase[offset + 2] = state.baseUnder[offset + 2]
+    state.result.underbase[offset + 3] = state.baseUnder[offset + 3]
+  }
+
+  function applySelection() {
+    if (!state.result || !state.baseColor || !state.mask || !state.maskCount) return
+    state.result.color.set(state.baseColor)
+    state.result.underbase.set(state.baseUnder)
+    var width = state.result.width
+    for (var index = 0; index < state.mask.length; index++) {
+      if (state.mask[index] !== 1) continue
+      var x = index % width
+      writeSelectionPixel(x, (index - x) / width, true)
+    }
+  }
+
+  function redrawOverlay() {
+    if (!overlay.width || !overlay.height) return
+    if (!state.selecting) {
+      overlayCtx.clearRect(0, 0, overlay.width, overlay.height)
+      return
+    }
+    var image = overlayCtx.createImageData(overlay.width, overlay.height)
+    var mask = state.mask
+    if (mask && mask.length === image.data.length / 4) {
+      for (var index = 0; index < mask.length; index++) {
+        if (!mask[index]) continue
+        var offset = index * 4
+        image.data[offset] = 228
+        image.data[offset + 1] = 87
+        image.data[offset + 2] = 46
+        image.data[offset + 3] = 120
+      }
+    }
+    overlayCtx.putImageData(image, 0, 0)
+  }
+
+  function blitRect(x0, y0, x1, y1) {
+    var width = x1 - x0 + 1
+    var height = y1 - y0 + 1
+    if (width < 1 || height < 1) return
+    var full = state.result.width
+    var pixels = state.view === 'white' ? state.result.underbase : state.result.color
+    if (state.view !== 'original') {
+      var image = new ImageData(width, height)
+      var write = 0
+      for (var y = y0; y <= y1; y++) {
+        var row = (y * full + x0) * 4
+        for (var x = 0; x < width; x++) {
+          image.data[write++] = pixels[row++]
+          image.data[write++] = pixels[row++]
+          image.data[write++] = pixels[row++]
+          image.data[write++] = pixels[row++]
+        }
+      }
+      viewCtx.putImageData(image, x0, y0)
+    }
+    if (!state.selecting) return
+    var tint = overlayCtx.createImageData(width, height)
+    var tintAt = 0
+    for (var oy = y0; oy <= y1; oy++) {
+      for (var ox = x0; ox <= x1; ox++) {
+        if (state.mask[oy * full + ox]) {
+          tint.data[tintAt] = 228
+          tint.data[tintAt + 1] = 87
+          tint.data[tintAt + 2] = 46
+          tint.data[tintAt + 3] = 120
+        }
+        tintAt += 4
+      }
+    }
+    overlayCtx.putImageData(tint, x0, y0)
+  }
+
+  function brushRadiusPx() {
+    return Math.max(1, (num('brush') / 25.4) * DPI)
+  }
+
+  function stampCircle(cx, cy) {
+    if (!state.result || !state.mask || state.busy) return
+    var radius = brushRadiusPx()
+    var solid = state.selectMode === 'solid'
+    var x0 = Math.max(0, Math.floor(cx - radius))
+    var y0 = Math.max(0, Math.floor(cy - radius))
+    var x1 = Math.min(state.result.width - 1, Math.ceil(cx + radius))
+    var y1 = Math.min(state.result.height - 1, Math.ceil(cy + radius))
+    var radius2 = radius * radius
+    for (var y = y0; y <= y1; y++) {
+      var dy = y + 0.5 - cy
+      for (var x = x0; x <= x1; x++) {
+        var dx = x + 0.5 - cx
+        if (dx * dx + dy * dy > radius2) continue
+        writeSelectionPixel(x, y, solid)
+      }
+    }
+    blitRect(x0, y0, x1, y1)
+    syncButtons()
+  }
+
+  var strokeFrom = null
+
+  function paintStroke(x, y) {
+    if (!strokeFrom) {
+      stampCircle(x, y)
+      strokeFrom = { x: x, y: y }
+      return
+    }
+    var dx = x - strokeFrom.x
+    var dy = y - strokeFrom.y
+    var distance = Math.sqrt(dx * dx + dy * dy)
+    var step = Math.max(1, brushRadiusPx() * 0.35)
+    var count = Math.max(1, Math.ceil(distance / step))
+    for (var i = 1; i <= count; i++) {
+      stampCircle(strokeFrom.x + (dx * i) / count, strokeFrom.y + (dy * i) / count)
+    }
+    strokeFrom = { x: x, y: y }
+  }
+
+  function pointerPixel(event) {
+    var rect = view.getBoundingClientRect()
+    return {
+      x: ((event.clientX - rect.left) / Math.max(1, rect.width)) * view.width,
+      y: ((event.clientY - rect.top) / Math.max(1, rect.height)) * view.height,
+    }
+  }
+
+  function nearSeed(ink, seed, tolerance) {
+    return Math.max(Math.abs(ink.r - seed.r), Math.abs(ink.g - seed.g), Math.abs(ink.b - seed.b)) <= tolerance
+  }
+
+  function magicSelect(x, y) {
+    if (!state.result || !state.mask || !state.source || state.busy) return
+    var seed = sourceInk(x, y)
+    if (!seed) return
+    var width = state.source.width
+    var height = state.source.height
+    var tolerance = num('wandTol')
+    var solid = state.selectMode === 'solid'
+    var minX = x
+    var maxX = x
+    var minY = y
+    var maxY = y
+    var matched = 0
+    function take(px, py) {
+      writeSelectionPixel(px, py, solid)
+      matched++
+      if (px < minX) minX = px
+      if (px > maxX) maxX = px
+      if (py < minY) minY = py
+      if (py > maxY) maxY = py
+    }
+    if (state.wandAll) {
+      for (var py = 0; py < height; py++) {
+        for (var px = 0; px < width; px++) {
+          var ink = sourceInk(px, py)
+          if (ink && nearSeed(ink, seed, tolerance)) take(px, py)
+        }
+      }
+    } else {
+      var seen = new Uint8Array(width * height)
+      var stack = [y * width + x]
+      seen[stack[0]] = 1
+      while (stack.length) {
+        var index = stack.pop()
+        var px = index % width
+        var py = (index - px) / width
+        var ink = sourceInk(px, py)
+        if (!ink || !nearSeed(ink, seed, tolerance)) continue
+        take(px, py)
+        if (px > 0 && !seen[index - 1]) {
+          seen[index - 1] = 1
+          stack.push(index - 1)
+        }
+        if (px + 1 < width && !seen[index + 1]) {
+          seen[index + 1] = 1
+          stack.push(index + 1)
+        }
+        if (py > 0 && !seen[index - width]) {
+          seen[index - width] = 1
+          stack.push(index - width)
+        }
+        if (py + 1 < height && !seen[index + width]) {
+          seen[index + width] = 1
+          stack.push(index + width)
+        }
+      }
+    }
+    if (matched) blitRect(minX, minY, maxX, maxY)
+    syncButtons()
+  }
+
+  function syncPick() {
+    var wand = state.pick === 'wand'
+    $('brushField').hidden = wand
+    $('brush').hidden = wand
+    $('wandField').hidden = !wand
+    $('wandTol').hidden = !wand
+    $('wandAll').hidden = !wand
+    viewport.classList.toggle('is-wand', state.selecting && wand)
+    setPressed('[data-pick]', 'data-pick', state.pick)
+    if (wand) brushCursor.classList.remove('is-on')
+  }
+
+  function moveBrushCursor(event) {
+    if (!state.selecting || state.pick === 'wand') {
+      brushCursor.classList.remove('is-on')
+      return
+    }
+    var radius = brushRadiusPx()
+    var rect = view.getBoundingClientRect()
+    var scale = rect.width / Math.max(1, view.width)
+    var size = Math.max(8, radius * 2 * scale)
+    brushCursor.classList.add('is-on')
+    brushCursor.style.width = size + 'px'
+    brushCursor.style.height = size + 'px'
+    brushCursor.style.left = (event.clientX - size / 2) + 'px'
+    brushCursor.style.top = (event.clientY - size / 2) + 'px'
+  }
+
+  function setSelecting(on) {
+    state.selecting = on && !!state.result
+    $('selectTool').setAttribute('aria-pressed', state.selecting ? 'true' : 'false')
+    viewport.classList.toggle('is-selecting', state.selecting)
+    brushCursor.classList.toggle('is-on', state.selecting && state.pick !== 'wand')
+    syncPick()
+    redrawOverlay()
+    syncButtons()
+  }
+
+  $('selectTool').addEventListener('click', function () {
+    setSelecting(!state.selecting)
+  })
+  document.querySelectorAll('[data-select]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      state.selectMode = button.getAttribute('data-select')
+      setPressed('[data-select]', 'data-select', state.selectMode)
+      if (!state.selecting) setSelecting(true)
+    })
+  })
+  document.querySelectorAll('[data-pick]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      state.pick = button.getAttribute('data-pick')
+      if (!state.selecting) setSelecting(true)
+      else syncPick()
+    })
+  })
+  $('brush').addEventListener('input', function () {
+    $('brushOut').textContent = Math.round(num('brush')) + ' mm'
+  })
+  $('wandTol').addEventListener('input', function () {
+    $('wandOut').textContent = String(Math.round(num('wandTol')))
+  })
+  $('wandAll').addEventListener('click', function () {
+    state.wandAll = !state.wandAll
+    $('wandAll').setAttribute('aria-pressed', state.wandAll ? 'true' : 'false')
+    if (!state.selecting) setSelecting(true)
+  })
+  $('selectApply').addEventListener('click', function () {
+    setSelecting(false)
+  })
+  $('selectClear').addEventListener('click', function () {
+    if (!state.mask) return
+    state.mask.fill(0)
+    state.maskCount = 0
+    if (state.result && state.baseColor) {
+      state.result.color.set(state.baseColor)
+      state.result.underbase.set(state.baseUnder)
+    }
+    paint()
+    syncButtons()
+  })
+  view.addEventListener('pointerdown', function (event) {
+    if (!state.selecting || event.button !== 0) return
+    event.preventDefault()
+    var point = pointerPixel(event)
+    if (state.pick === 'wand') {
+      magicSelect(Math.floor(point.x), Math.floor(point.y))
+      return
+    }
+    view.setPointerCapture(event.pointerId)
+    strokeFrom = null
+    paintStroke(point.x, point.y)
+    moveBrushCursor(event)
+  })
+  view.addEventListener('pointermove', function (event) {
+    moveBrushCursor(event)
+    if (!state.selecting || !strokeFrom) return
+    if (event.buttons !== 1 && event.pointerType !== 'touch') return
+    var point = pointerPixel(event)
+    paintStroke(point.x, point.y)
+  })
+  function endStroke() {
+    strokeFrom = null
+  }
+  view.addEventListener('pointerup', endStroke)
+  view.addEventListener('pointercancel', endStroke)
+  viewport.addEventListener('pointerleave', function () {
+    if (!strokeFrom) brushCursor.classList.remove('is-on')
+  })
+  viewport.addEventListener('pointerenter', function () {
+    if (state.selecting) brushCursor.classList.add('is-on')
   })
 
   viewport.addEventListener('wheel', function (event) {

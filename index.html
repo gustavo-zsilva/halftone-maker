@@ -281,6 +281,7 @@
           <li>Furos leves mantêm a arte e abrem círculos, listras ou grade. O vão parte de 0,7 mm e tira 20% da tinta. A borda de fora fica inteira.</li>
           <li>Branco, preto ou outra cor podem sair da arte inteira, para a camiseta aparecer no lugar.</li>
           <li>O halftone inteligente deixa o chapado inteiro e usa bolinha só na passagem de tom.</li>
+          <li>A seleção tira o halftone ou devolve as bolinhas. O laranja é só a marca: Aplicar esconde e deixa a arte. A varinha pega a forma da cor clicada.</li>
         </ul>
       </section>
       </div>
@@ -318,6 +319,25 @@
           <button type="button" id="zoomIn" aria-label="Aumentar">+</button>
         </div>
       </div>
+      <div class="toolbar select-bar">
+        <button type="button" id="selectTool" aria-pressed="false" disabled>Selecionar</button>
+        <div class="seg" role="radiogroup" aria-label="O que a seleção faz">
+          <button type="button" id="selectSolid" data-select="solid" aria-pressed="true">Tirar halftone</button>
+          <button type="button" id="selectDots" data-select="dots" aria-pressed="false">Manter halftone</button>
+        </div>
+        <div class="seg" role="radiogroup" aria-label="Ferramenta de seleção">
+          <button type="button" data-pick="brush" aria-pressed="true">Pincel</button>
+          <button type="button" data-pick="wand" aria-pressed="false">Varinha</button>
+        </div>
+        <label class="brush-size" id="brushField" for="brush">Pincel <output id="brushOut" for="brush">8 mm</output></label>
+        <input id="brush" type="range" min="1" max="30" step="1" value="8" aria-label="Tamanho do pincel">
+        <label class="brush-size" id="wandField" for="wandTol" hidden>Tolerância <output id="wandOut" for="wandTol">28</output></label>
+        <input id="wandTol" type="range" min="0" max="96" step="1" value="28" hidden aria-label="Tolerância da varinha">
+        <button type="button" id="wandAll" aria-pressed="false" hidden>Toda a cor</button>
+        <button type="button" id="selectApply" disabled>Aplicar</button>
+        <button type="button" id="selectClear" disabled>Limpar</button>
+        <p class="hint" id="selectHint">O laranja só marca a seleção. Aplicar esconde a marca e deixa a arte chapada nesse trecho. A varinha pega a forma da cor clicada.</p>
+      </div>
       <p class="spec" id="spec">Carregue uma arte para ver o tamanho de impressão.</p>
       <p class="progress" id="progress" hidden>
         <span id="progressLabel">Montando as bolinhas…</span>
@@ -332,8 +352,10 @@
         </div>
         <div class="sheet is-checker" id="sheet" hidden>
           <canvas id="view"></canvas>
+          <canvas id="selectOverlay"></canvas>
         </div>
       </div>
+      <div class="brush-cursor" id="brushCursor"></div>
     </section>
   </main>
 
