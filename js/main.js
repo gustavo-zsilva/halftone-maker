@@ -62,6 +62,8 @@
     outline: false,
     smart: false,
     selecting: false,
+    showMark: false,
+    picking: false,
     selectMode: 'solid',
     pick: 'brush',
     wandAll: false,
@@ -69,6 +71,8 @@
     maskW: 0,
     maskH: 0,
     maskCount: 0,
+    undoStack: [],
+    redoStack: [],
     baseColor: null,
     baseUnder: null,
     choke: 1,
@@ -196,8 +200,8 @@
     $('selectSolid').textContent = holes ? 'Sem furos' : 'Tirar halftone'
     $('selectDots').textContent = holes ? 'Com furos' : 'Manter halftone'
     $('selectHint').textContent = holes
-      ? 'O laranja só marca a seleção. Aplicar esconde a marca. A varinha pega a forma da cor clicada; Toda a cor pega essa cor na arte inteira.'
-      : 'O laranja só marca a seleção. Aplicar esconde a marca e deixa a arte chapada nesse trecho. A varinha pega a forma da cor clicada.'
+      ? 'O laranja só marca a seleção. Aplicar esconde a marca e a varinha continua no próximo clique. Ctrl+Z desfaz e Ctrl+Y refaz.'
+      : 'O laranja só marca a seleção. Aplicar esconde a marca e a varinha continua no próximo clique. Ctrl+Z desfaz e Ctrl+Y refaz.'
     $('brushOut').textContent = Math.round(num('brush')) + ' mm'
     $('shapeHint').textContent = state.shape === 'ellipse'
       ? 'O ponto alonga na direção do ângulo, encadeia no tom fechado e deixa uma fresta na outra direção.'
@@ -334,7 +338,7 @@
     $('viewWhite').disabled = !state.result
     $('viewOriginal').disabled = !state.source
     $('selectTool').disabled = !state.result
-    $('selectApply').disabled = !state.selecting
+    $('selectApply').disabled = !state.selecting || !state.showMark
     $('selectClear').disabled = !state.maskCount
   }
 
@@ -524,6 +528,7 @@
     state.maskW = 0
     state.maskH = 0
     state.maskCount = 0
+    clearHistory()
     state.baseColor = null
     state.baseUnder = null
     state.knockoutTouched = false
@@ -1058,6 +1063,7 @@
 
   function resizeMask(width, height) {
     if (state.mask && state.maskW === width && state.maskH === height) return
+    clearHistory()
     var next = new Uint8Array(width * height)
     var count = 0
     if (state.mask && state.maskW > 0 && state.maskH > 0) {
@@ -1117,6 +1123,92 @@
     return true
   }
 
+  var historyOpen = null
+  var HISTORY_LIMIT = 30
+
+  function clearHistory() {
+    state.undoStack = []
+    state.redoStack = []
+    historyOpen = null
+  }
+
+  function historyBegin() {
+    if (!state.mask || historyOpen) return
+    historyOpen = {
+      touched: new Uint8Array(state.mask.length),
+      indices: [],
+      prev: [],
+    }
+  }
+
+  function historyNote(index) {
+    if (!historyOpen || index < 0 || index >= historyOpen.touched.length || historyOpen.touched[index]) return
+    historyOpen.touched[index] = 1
+    historyOpen.indices.push(index)
+    historyOpen.prev.push(state.mask[index])
+  }
+
+  function historyCommit() {
+    if (!historyOpen) return
+    var open = historyOpen
+    historyOpen = null
+    if (!open.indices.length || !state.mask) return
+    var indices = new Uint32Array(open.indices)
+    var prev = new Uint8Array(open.prev)
+    var next = new Uint8Array(indices.length)
+    for (var i = 0; i < indices.length; i++) next[i] = state.mask[indices[i]]
+    state.redoStack = []
+    state.undoStack.push({ indices: indices, prev: prev, next: next, w: state.maskW, h: state.maskH })
+    while (state.undoStack.length > HISTORY_LIMIT) state.undoStack.shift()
+  }
+
+  function applyHistory(entry, usePrev) {
+    if (!state.mask || !state.result || entry.w !== state.maskW || entry.h !== state.maskH) return false
+    var values = usePrev ? entry.prev : entry.next
+    var width = state.result.width
+    var minX = width
+    var minY = state.result.height
+    var maxX = 0
+    var maxY = 0
+    for (var i = 0; i < entry.indices.length; i++) {
+      var index = entry.indices[i]
+      var x = index % width
+      var y = (index - x) / width
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+      writeSelectionPixel(x, y, values[i] === 1)
+    }
+    state.showMark = !!state.selecting
+    if (maxX >= minX) blitRect(minX, minY, maxX, maxY)
+    redrawOverlay()
+    syncButtons()
+    return true
+  }
+
+  function undoSelection() {
+    if (historyOpen || state.picking || state.busy) return
+    var entry = state.undoStack.pop()
+    if (!entry || !applyHistory(entry, true)) {
+      $('selectHint').textContent = 'Nada para desfazer.'
+      return
+    }
+    state.redoStack.push(entry)
+    $('selectHint').textContent = 'Desfeito. Ctrl+Y refaz.'
+  }
+
+  function redoSelection() {
+    if (historyOpen || state.picking || state.busy) return
+    var entry = state.redoStack.pop()
+    if (!entry || !applyHistory(entry, false)) {
+      $('selectHint').textContent = 'Nada para refazer.'
+      return
+    }
+    state.undoStack.push(entry)
+    $('selectHint').textContent = 'Refeito. Ctrl+Z desfaz.'
+  }
+
   function clearPixelAt(buffer, offset) {
     buffer[offset] = 0
     buffer[offset + 1] = 0
@@ -1130,6 +1222,7 @@
     var offset = index * 4
     var mark = solid ? 1 : 0
     if (state.mask[index] !== mark) {
+      historyNote(index)
       state.maskCount += mark ? 1 : -1
       state.mask[index] = mark
     }
@@ -1179,7 +1272,7 @@
 
   function redrawOverlay() {
     if (!overlay.width || !overlay.height) return
-    if (!state.selecting) {
+    if (!state.selecting || !state.showMark) {
       overlayCtx.clearRect(0, 0, overlay.width, overlay.height)
       return
     }
@@ -1218,7 +1311,7 @@
       }
       viewCtx.putImageData(image, x0, y0)
     }
-    if (!state.selecting) return
+    if (!state.selecting || !state.showMark) return
     var tint = overlayCtx.createImageData(width, height)
     var tintAt = 0
     for (var oy = y0; oy <= y1; oy++) {
@@ -1257,6 +1350,14 @@
       }
     }
     blitRect(x0, y0, x1, y1)
+    revealMark()
+    syncButtons()
+  }
+
+  function revealMark() {
+    if (state.showMark) return
+    state.showMark = true
+    redrawOverlay()
     syncButtons()
   }
 
@@ -1291,10 +1392,114 @@
     return Math.max(Math.abs(ink.r - seed.r), Math.abs(ink.g - seed.g), Math.abs(ink.b - seed.b)) <= tolerance
   }
 
+  function wandReachPx() {
+    var mm = state.mode === 'holes' ? num('hole') : num('dot')
+    var dotPx = (mm / 25.4) * DPI
+    var scale = view.width ? view.getBoundingClientRect().width / view.width : 1
+    var slop = scale > 0.05 ? 4 / scale : 28
+    return Math.max(8, Math.min(48, Math.round(Math.max(dotPx * 0.75, slop))))
+  }
+
+  function interiorInk(x, y, ink) {
+    var around = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+    for (var i = 0; i < around.length; i++) {
+      var next = sourceInk(x + around[i][0], y + around[i][1])
+      if (!next || !nearSeed(next, ink, 18)) return false
+    }
+    return true
+  }
+
+  function resolveSeed(x, y) {
+    var reach = wandReachPx()
+    var nearest = null
+    var nearestD = Infinity
+    var interior = null
+    var interiorD = Infinity
+    var bins = Object.create(null)
+    var reach2 = reach * reach
+    for (var dy = -reach; dy <= reach; dy++) {
+      for (var dx = -reach; dx <= reach; dx++) {
+        var dist = dx * dx + dy * dy
+        if (dist > reach2) continue
+        var ink = sourceInk(x + dx, y + dy)
+        if (!ink) continue
+        var key = (ink.r >> 4) + ',' + (ink.g >> 4) + ',' + (ink.b >> 4)
+        var bin = bins[key]
+        if (!bin) bins[key] = bin = { count: 0, hit: null, dist: Infinity }
+        bin.count++
+        if (dist < bin.dist) {
+          bin.dist = dist
+          bin.hit = { x: x + dx, y: y + dy, ink: ink }
+        }
+        if (dist < nearestD) {
+          nearestD = dist
+          nearest = bin.hit
+        }
+        if (dist < interiorD && interiorInk(x + dx, y + dy, ink)) {
+          interiorD = dist
+          interior = { x: x + dx, y: y + dy, ink: ink }
+        }
+      }
+    }
+    if (interior) return interior
+    var best = null
+    for (var name in bins) {
+      if (!best || bins[name].count > best.count) best = bins[name]
+    }
+    if (best) return best.hit
+    return nearest
+  }
+
+  function clickMissText(x, y) {
+    var source = state.source
+    if (!source || x < 0 || y < 0 || x >= source.width || y >= source.height) {
+      return 'Esse clique caiu fora da arte. Clica no meio da cor.'
+    }
+    var offset = (y * source.width + x) * 4
+    var alphaCutoff = Math.round((num('opacity') / 100) * 255)
+    if (source.data[offset + 3] < alphaCutoff) {
+      return 'Esse clique caiu no vazio. Clica no meio da cor — o vão entre as bolinhas não é a tinta.'
+    }
+    return 'Essa cor foi removida da arte, então a varinha não pega esse ponto.'
+  }
+
   function magicSelect(x, y) {
-    if (!state.result || !state.mask || !state.source || state.busy) return
-    var seed = sourceInk(x, y)
-    if (!seed) return
+    if (!state.result || !state.mask || !state.source) return
+    x = Math.floor(x)
+    y = Math.floor(y)
+    if (state.busy || state.picking) {
+      $('selectHint').textContent = 'Espera a arte terminar de montar.'
+      return
+    }
+    var hit = resolveSeed(x, y)
+    if (!hit) {
+      $('selectHint').textContent = clickMissText(x, y)
+      return
+    }
+    state.picking = true
+    $('selectHint').textContent = 'Pegando a cor…'
+    window.requestAnimationFrame(function () {
+      try {
+        historyBegin()
+        var matched = floodSelection(hit.x, hit.y, hit.ink)
+        historyCommit()
+        var hidden = !state.showMark
+        state.showMark = true
+        if (matched) blitRect(matched.minX, matched.minY, matched.maxX, matched.maxY)
+        if (hidden) redrawOverlay()
+        $('selectHint').textContent = matched && matched.count > 40
+          ? 'Pegou a forma. O laranja é só a marca — Aplicar esconde, e o próximo clique da varinha continua valendo.'
+          : 'Pegou só um pedaço. Sobe a tolerância se a forma não veio inteira.'
+      } catch (error) {
+        historyCommit()
+        $('selectHint').textContent = 'Não consegui completar essa seleção. Tenta de novo.'
+      }
+      state.picking = false
+      syncButtons()
+    })
+  }
+
+  function floodSelection(x, y, seed) {
     var width = state.source.width
     var height = state.source.height
     var tolerance = num('wandTol')
@@ -1348,8 +1553,8 @@
         }
       }
     }
-    if (matched) blitRect(minX, minY, maxX, maxY)
-    syncButtons()
+    if (!matched) return null
+    return { count: matched, minX: minX, minY: minY, maxX: maxX, maxY: maxY }
   }
 
   function syncPick() {
@@ -1382,6 +1587,7 @@
 
   function setSelecting(on) {
     state.selecting = on && !!state.result
+    state.showMark = state.selecting
     $('selectTool').setAttribute('aria-pressed', state.selecting ? 'true' : 'false')
     viewport.classList.toggle('is-selecting', state.selecting)
     brushCursor.classList.toggle('is-on', state.selecting && state.pick !== 'wand')
@@ -1419,12 +1625,19 @@
     if (!state.selecting) setSelecting(true)
   })
   $('selectApply').addEventListener('click', function () {
-    setSelecting(false)
+    state.showMark = false
+    redrawOverlay()
+    syncButtons()
   })
   $('selectClear').addEventListener('click', function () {
-    if (!state.mask) return
+    if (!state.mask || !state.maskCount) return
+    historyBegin()
+    for (var index = 0; index < state.mask.length; index++) {
+      if (state.mask[index]) historyNote(index)
+    }
     state.mask.fill(0)
     state.maskCount = 0
+    historyCommit()
     if (state.result && state.baseColor) {
       state.result.color.set(state.baseColor)
       state.result.underbase.set(state.baseUnder)
@@ -1432,15 +1645,17 @@
     paint()
     syncButtons()
   })
-  view.addEventListener('pointerdown', function (event) {
+  sheet.addEventListener('pointerdown', function (event) {
     if (!state.selecting || event.button !== 0) return
+    if (event.target !== view && event.target !== overlay && event.target !== sheet) return
     event.preventDefault()
     var point = pointerPixel(event)
     if (state.pick === 'wand') {
-      magicSelect(Math.floor(point.x), Math.floor(point.y))
+      magicSelect(point.x, point.y)
       return
     }
-    view.setPointerCapture(event.pointerId)
+    if (view.setPointerCapture) view.setPointerCapture(event.pointerId)
+    historyBegin()
     strokeFrom = null
     paintStroke(point.x, point.y)
     moveBrushCursor(event)
@@ -1454,6 +1669,7 @@
   })
   function endStroke() {
     strokeFrom = null
+    historyCommit()
   }
   view.addEventListener('pointerup', endStroke)
   view.addEventListener('pointercancel', endStroke)
@@ -1461,7 +1677,7 @@
     if (!strokeFrom) brushCursor.classList.remove('is-on')
   })
   viewport.addEventListener('pointerenter', function () {
-    if (state.selecting) brushCursor.classList.add('is-on')
+    if (state.selecting && state.pick !== 'wand') brushCursor.classList.add('is-on')
   })
 
   viewport.addEventListener('wheel', function (event) {
@@ -1480,6 +1696,18 @@
     state.zoom = 1
     applyZoom()
   })
+  window.addEventListener('keydown', function (event) {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+    var key = event.key.toLowerCase()
+    if (key !== 'z' && key !== 'y') return
+    var target = event.target
+    var typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && target.type !== 'range' && target.type !== 'color'
+    if (typing) return
+    event.preventDefault()
+    if (key === 'z' && !event.shiftKey) undoSelection()
+    else redoSelection()
+  })
+
   window.addEventListener('resize', function () {
     if (state.zoom === 'fit') applyZoom()
   })

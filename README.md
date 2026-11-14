@@ -10,7 +10,7 @@ A imagem não sai do navegador. Abra `index.html` ou sirva a pasta com qualquer 
 2. Escolha o tipo de estampa. Halftone troca a tinta por bolinhas. Furos leves mantêm a arte original e abrem círculos, listras ou grade, com vão de 0,7 mm e 20% de tinta a menos. De longe ela continua lisa. Se um controle descer do piso da prensa, um aviso explica o que pode falhar.
 3. Se a camiseta for branca, use Camiseta clara: o branco sai e a tinta fica nos escuros. Se for preta, use Camiseta preta: os tons invertem e o preto sai, para a malha fazer o papel do preto. Em Outra, escolha outra cor. A cor sai do desenho inteiro, não só do fundo.
 4. Ajuste a largura de impressão. No halftone, o impacto enche os tons escuros e deixa os claros abertos. Inteligente deixa as cores chapadas inteiras e põe bolinha só onde o tom muda. Preto e branco troca a cor por cinza. Contorno sólido deixa só a borda de fora em tinta contínua. Ctrl + scroll altera o zoom da prévia.
-5. Confira a prévia no xadrez — o xadrez não imprime — e nos fundos claro e escuro. Em Selecionar, use o pincel ou a varinha para tirar o halftone de uma área ou devolver as bolinhas. O laranja é só a marca. Aplicar esconde a marca e deixa a arte.
+5. Confira a prévia no xadrez — o xadrez não imprime — e nos fundos claro e escuro. Em Selecionar, use o pincel ou a varinha para tirar o halftone de uma área ou devolver as bolinhas. O laranja é só a marca. Aplicar esconde a marca e deixa a arte; a varinha continua no próximo clique. Ctrl+Z desfaz a seleção e Ctrl+Y refaz.
 6. Use o zoom 1:1 para ver a borda real de cada bolinha ou furo.
 7. Baixe o PNG transparente, o SVG (para o Inkscape) ou o PDF. A base branca em PNG é um arquivo à parte, se a gráfica pedir o branco separado.
 

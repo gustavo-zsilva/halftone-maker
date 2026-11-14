@@ -6,7 +6,7 @@
   <title>Halftone DTF</title>
   <meta name="description" content="Transforme artes em bolinhas coloridas com fundo transparente, prontas para impressão DTF.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect fill='%23141210' width='32' height='32'/%3E%3Ccircle fill='%23e4572e' cx='10' cy='18' r='4'/%3E%3Ccircle fill='%23f0c36a' cx='20' cy='13' r='6'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/app.css?v=20261113">
 </head>
 <body>
   <header>
@@ -281,7 +281,7 @@
           <li>Furos leves mantêm a arte e abrem círculos, listras ou grade. O vão parte de 0,7 mm e tira 20% da tinta. A borda de fora fica inteira.</li>
           <li>Branco, preto ou outra cor podem sair da arte inteira, para a camiseta aparecer no lugar.</li>
           <li>O halftone inteligente deixa o chapado inteiro e usa bolinha só na passagem de tom.</li>
-          <li>A seleção tira o halftone ou devolve as bolinhas. O laranja é só a marca: Aplicar esconde e deixa a arte. A varinha pega a forma da cor clicada.</li>
+          <li>A seleção tira o halftone ou devolve as bolinhas. O laranja é só a marca: Aplicar esconde e deixa a arte, e a varinha continua no próximo clique. Ctrl+Z desfaz e Ctrl+Y refaz.</li>
         </ul>
       </section>
       </div>
@@ -336,7 +336,7 @@
         <button type="button" id="wandAll" aria-pressed="false" hidden>Toda a cor</button>
         <button type="button" id="selectApply" disabled>Aplicar</button>
         <button type="button" id="selectClear" disabled>Limpar</button>
-        <p class="hint" id="selectHint">O laranja só marca a seleção. Aplicar esconde a marca e deixa a arte chapada nesse trecho. A varinha pega a forma da cor clicada.</p>
+        <p class="hint" id="selectHint">O laranja só marca a seleção. Aplicar esconde a marca e a varinha continua no próximo clique. Ctrl+Z desfaz e Ctrl+Y refaz.</p>
       </div>
       <p class="spec" id="spec">Carregue uma arte para ver o tamanho de impressão.</p>
       <p class="progress" id="progress" hidden>
@@ -359,10 +359,10 @@
     </section>
   </main>
 
-  <script src="js/halftone.js"></script>
-  <script src="js/export-vector.js"></script>
-  <script src="js/png-dpi.js"></script>
-  <script src="js/main.js"></script>
+  <script src="js/halftone.js?v=20261113"></script>
+  <script src="js/export-vector.js?v=20261113"></script>
+  <script src="js/png-dpi.js?v=20261113"></script>
+  <script src="js/main.js?v=20261113"></script>
   <noscript>Este site precisa de JavaScript para gerar o halftone no seu navegador. A arte não sai do computador.</noscript>
 </body>
 </html>
